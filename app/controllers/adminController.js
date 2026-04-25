@@ -4,14 +4,17 @@ const Admin = require('../models/Admin');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../config/jwt');
 
-// Helper to get models with fallback
-let User, OTPRequest, ActivityLog, BillingRecord;
+// Helper to get models
+let User, OTPRequest, ActivityLog, BillingRecord, Payment, Campaign, Message;
 
 try {
   User = db.User || require('../models/User');
   OTPRequest = db.OTPRequest || require('../models/OTPRequest');
   ActivityLog = db.ActivityLog || require('../models/ActivityLog');
   BillingRecord = db.BillingRecord || require('../models/BillingRecord');
+  Payment = db.Payment || require('../models/Payment');
+  Campaign = db.Campaign || require('../models/Campaign');
+  Message = db.Message || require('../models/Message');
 } catch (error) {
   console.log('Error loading models:', error.message);
 }
@@ -38,6 +41,7 @@ const adminLogin = async (req, res) => {
 const getDashboardStats = async (req, res) => {
   try {
     const totalUsers = await (User?.count() || Promise.resolve(0));
+    const activeUsers = await (User?.count({ where: { isActive: true } }) || Promise.resolve(0));
     const totalOTPRequests = await (OTPRequest?.count() || Promise.resolve(0));
     const successfulVerifications = await (OTPRequest?.count({ where: { status: 'verified' } }) || Promise.resolve(0));
     const failedAttempts = await (OTPRequest?.count({ where: { status: 'failed' } }) || Promise.resolve(0));
@@ -56,16 +60,27 @@ const getDashboardStats = async (req, res) => {
       }) || [];
     }
 
+    const adminBalance = await (Payment?.sum('amount', { where: { type: 'credit' } }) || Promise.resolve(0));
+    
+    const recentActivities = await (ActivityLog?.findAll({
+      include: User ? [{ model: User, as: 'User', attributes: ['name', 'email'], required: false }] : [],
+      order: [['createdAt', 'DESC']],
+      limit: 10
+    }) || Promise.resolve([]));
+
     res.json({
       success: true,
       stats: { 
         totalUsers, 
+        activeUsers,
         totalOTPRequests, 
         successfulVerifications, 
         failedAttempts, 
         revenue: revenue || 0 
       },
-      channelStats: channelStats || []
+      channelStats: channelStats || [],
+      adminBalance: adminBalance || 0,
+      recentActivities
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);
@@ -91,7 +106,7 @@ const getUsers = async (req, res) => {
     
     const { count, rows } = await User.findAndCountAll({
       where,
-      attributes: ['id', 'name', 'email', 'phone', 'company', 'balance', 'isActive', 'createdAt'],
+      attributes: ['id', 'name', 'email', 'phone', 'company', 'balance', 'services', 'isActive', 'createdAt'],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset
@@ -116,7 +131,7 @@ const getUsers = async (req, res) => {
 // Create user
 const createUser = async (req, res) => {
   try {
-    const { name, email, phone, company, initialBalance } = req.body;
+    const { name, email, phone, company, services, initialBalance } = req.body;
     
     const existingUser = await User.findOne({ where: { [Op.or]: [{ email }, { phone }] } });
     if (existingUser) {
@@ -128,6 +143,7 @@ const createUser = async (req, res) => {
       email,
       phone,
       company,
+      services: services || { sms: true, whatsapp: false, email: true },
       balance: initialBalance || 0,
       isActive: true
     });
@@ -149,14 +165,14 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, company, isActive } = req.body;
+    const { name, email, phone, company, isActive, services } = req.body;
     
     const user = await User.findByPk(id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    await user.update({ name, email, phone, company, isActive });
+    await user.update({ name, email, phone, company, isActive, services });
     
     await ActivityLog?.create({
       userId: id,
@@ -213,7 +229,7 @@ const addBalance = async (req, res) => {
         userId: id,
         type: 'credit',
         amount,
-        description: description || `Admin added ₹${amount}`
+        description: description || `Admin added $${amount} credits`
       });
     }
     
@@ -334,6 +350,70 @@ const getBillingSummary = async (req, res) => {
   }
 };
 
+// Get services
+const getServices = async (req, res) => {
+  try {
+    const services = [
+      { id: 'sms', name: 'SMS', price: 0.03, icon: '📱', description: 'Text message OTP' },
+      { id: 'whatsapp', name: 'WhatsApp', price: 0.02, icon: '💬', description: 'WhatsApp message OTP' },
+      { id: 'email', name: 'Email', price: 0.005, icon: '✉️', description: 'Email OTP' }
+    ];
+    res.json({ success: true, services });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Add payment to user
+const addUserPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, description } = req.body;
+    
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    const newBalance = parseFloat(user.balance) + parseFloat(amount);
+    await user.update({ balance: newBalance });
+    
+    if (Payment) {
+      await Payment.create({
+        userId: id,
+        amount,
+        type: 'credit',
+        description: description || `Admin added $${amount} credits`
+      });
+    }
+    
+    await ActivityLog?.create({
+      userId: id,
+      action: 'payment_added',
+      details: { amount, description, addedBy: req.admin?.id }
+    });
+    
+    res.json({ success: true, balance: newBalance });
+  } catch (error) {
+    console.error('Add user payment error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update user services
+const updateUserServices = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { services } = req.body;
+    
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    await user.update({ services });
+    res.json({ success: true, services: user.services });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   adminLogin,
   getDashboardStats,
@@ -344,5 +424,8 @@ module.exports = {
   addBalance,
   getOTPRequests,
   getActivityLogs,
-  getBillingSummary
+  getBillingSummary,
+  getServices,
+  addUserPayment,
+  updateUserServices
 };

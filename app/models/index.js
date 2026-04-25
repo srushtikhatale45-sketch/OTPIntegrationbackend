@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { sequelize } = require('../config/database');
-
+const Campaign = require('./Campign');
+const Message = require('./Message');
+const Payment = require('./Payment');
 const db = {};
 
 // Read all model files in this directory
@@ -26,6 +28,20 @@ Object.keys(db).forEach(modelName => {
   }
 });
 
+// In the associations section, add:
+Campaign.associate = (models) => {
+  Campaign.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
+  Campaign.hasMany(models.Message, { foreignKey: 'campaignId', as: 'messages' });
+};
+
+Message.associate = (models) => {
+  Message.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
+  Message.belongsTo(models.Campaign, { foreignKey: 'campaignId', as: 'campaign' });
+};
+
+Payment.associate = (models) => {
+  Payment.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
+};
 db.sequelize = sequelize;
 db.Sequelize = require('sequelize');
 
