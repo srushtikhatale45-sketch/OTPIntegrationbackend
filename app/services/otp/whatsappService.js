@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const sendWhatsAppOTP = async (phoneNumber, otpCode) => {
+const sendOTPviaWhatsApp = async (phoneNumber, otpCode) => {
   try {
     const apiKey = process.env.PINBOT_API_KEY;
     const phoneNumberId = process.env.PHONE_NUMBER_ID;
@@ -147,7 +147,7 @@ const sendWhatsAppOTPWithFallback = async (phoneNumber, otpCode) => {
 };
 
 module.exports = { 
-  sendWhatsAppOTP, 
+  sendOTPviaWhatsApp, 
   sendWhatsAppOTPAsText, 
   sendWhatsAppOTPWithFallback 
 };

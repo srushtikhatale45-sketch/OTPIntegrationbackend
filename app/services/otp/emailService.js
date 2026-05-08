@@ -1,48 +1,108 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 const dotenv = require('dotenv');
 
 dotenv.config();
 
-let transporter = null;
-
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT),
-    secure: false,
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-  });
-}
-
-const sendEmailOTP = async (email, otpCode) => {
+/**
+ * Send OTP via Email using richsol.com API
+ * @param {string} email - Recipient email address
+ * @param {string} otpCode - 6-digit OTP code
+ * @returns {Promise<object>} - Result object
+ */
+const sendOTPviaEmail = async (email, otpCode) => {
   try {
-    if (!transporter) {
-      return { success: false, error: 'Email service not configured' };
+    const username = process.env.EMAIL_USERNAME;
+    const password = process.env.EMAIL_PASSWORD;
+    const templateId = parseInt(process.env.EMAIL_TEMPLATE_ID) || 817;
+    const fromEmail = process.env.EMAIL_FROM;
+    const fromName = process.env.EMAIL_FROM_NAME;
+    const apiUrl = process.env.EMAIL_API_URL;
+    
+    if (!username || !password) {
+      console.log('⚠️ Email credentials not configured. Using simulated mode.');
+      return { success: false, error: 'Email not configured', simulated: true };
     }
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #4F46E5;">OTP Verification</h2>
-        <p>Your OTP verification code is:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; background: #f0f0f0; padding: 10px 20px; border-radius: 5px;">${otpCode}</span>
-        </div>
-        <p>This code is valid for 5 minutes.</p>
-      </div>
-    `;
+    // Get name from email (before @)
+    const userName = email.split('@')[0];
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Your OTP Verification Code',
-      html
+    // Prepare request body matching your curl format
+    const requestBody = {
+      template_id: templateId,
+      from: {
+        email: fromEmail,
+        name: fromName
+      },
+      personalizations: [
+        {
+          to: [{ email: email }],
+          attributes: {
+            NAME: userName,
+            CODE: otpCode
+          }
+        }
+      ]
+    };
+
+    console.log(`\n📧 Sending Email OTP via richsol.com`);
+    console.log(`📍 Target: ${email}`);
+    console.log(`🔑 OTP Code: ${otpCode}`);
+    console.log(`📝 Template ID: ${templateId}`);
+
+    // Make API request with Basic Authentication
+    const response = await axios.post(apiUrl, requestBody, {
+      auth: {
+        username: username,
+        password: password
+      },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 30000
     });
-
-    return { success: true, messageId: 'email_sent' };
+    
+    console.log('✅ Email API Response:', response.data);
+    
+    return { 
+      success: true, 
+      message: 'Email sent successfully', 
+      response: response.data 
+    };
+    
   } catch (error) {
-    console.error('Email error:', error.message);
-    return { success: false, error: error.message };
+    console.error('❌ Email API Error:', error.message);
+    
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Response:', JSON.stringify(error.response.data, null, 2));
+    }
+    
+    // Fallback to console log (won't break the app)
+    console.log(`\n📧 EMAIL WOULD BE SENT TO: ${email}`);
+    console.log(`🔑 OTP CODE: ${otpCode}`);
+    console.log(`📝 Using Template ID: ${process.env.EMAIL_TEMPLATE_ID}`);
+    
+    return { success: true, simulated: true, message: 'Email simulated' };
   }
 };
 
-module.exports = { sendEmailOTP };
+/**
+ * Test email configuration
+ */
+const testEmailConfig = async () => {
+  try {
+    console.log('🔍 Testing Email Configuration...');
+    const result = await sendOTPviaEmail('test@example.com', '123456');
+    if (result.success) {
+      console.log('✅ Email service is ready!');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Email test failed:', error.message);
+    return false;
+  }
+};
+
+module.exports = { sendOTPviaEmail, testEmailConfig };

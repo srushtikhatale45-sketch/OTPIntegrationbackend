@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const sendSMSOTP = async (phoneNumber, otpCode) => {
+const sendOTPviaSMS = async (phoneNumber, otpCode) => {
   try {
     const username = process.env.SMS_USERNAME;
     const password = process.env.SMS_PASSWORD;
@@ -25,4 +25,4 @@ const sendSMSOTP = async (phoneNumber, otpCode) => {
   }
 };
 
-module.exports = { sendSMSOTP };
+module.exports = { sendOTPviaSMS };
