@@ -440,7 +440,46 @@ const addUserPayment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// Get user dashboard data for admin viewing
+const getUserDashboardData = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'name', 'email', 'phone', 'company', 'balance', 'services', 'apiKey', 'createdAt']
+    });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    const campaigns = await Campaign.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      limit: 50
+    });
+    const messages = await Message.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      limit: 100
+    });
+    const totalMessages = await Message.count({ where: { userId } });
+    const successful = await Message.count({ where: { userId, status: 'delivered' } });
+    const failed = await Message.count({ where: { userId, status: 'failed' } });
+    const totalSpent = await Message.sum('cost', { where: { userId } }) || 0;
+    const payments = await Payment.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      user,
+      campaigns,
+      messages,
+      report: { totalMessages, successful, failed, totalSpent, payments }
+    });
+  } catch (error) {
+    console.error('Error fetching user dashboard data:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 // Update user services
 const updateUserServices = async (req, res) => {
   try {
@@ -471,5 +510,6 @@ module.exports = {
   getServices,
   addUserPayment,
   updateUserServices,
-  getUserOTPStats
+  getUserOTPStats,
+  getUserDashboardData
 };
