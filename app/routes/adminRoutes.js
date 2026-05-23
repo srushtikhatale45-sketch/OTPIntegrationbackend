@@ -15,7 +15,8 @@ const {
   getBillingSummary,
   getServices,
   addUserPayment,
-  updateUserServices
+  updateUserServices,
+  getUserOTPStats
 } = require('../controllers/adminController');
 
 // Public route
@@ -36,5 +37,5 @@ router.get('/otp-requests', getOTPRequests);
 router.get('/activity-logs', getActivityLogs);
 router.get('/billing-summary', getBillingSummary);
 router.get('/services', getServices);
-
+router.get('/user-otp-stats', getUserOTPStats);
 module.exports = router;

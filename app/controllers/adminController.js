@@ -127,40 +127,101 @@ const getUsers = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// Get OTP statistics per user (total attempts, verified, failed, pending)
+const getUserOTPStats = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'name', 'email', 'phone'],
+      include: [{
+        model: OTPRequest,
+        as: 'otpRequests',
+        attributes: ['status', 'isVerified', 'attempts']
+      }]
+    });
 
-// Create user
+    const stats = users.map(user => {
+      const otps = user.otpRequests || [];
+      const total = otps.length;
+      const verified = otps.filter(o => o.isVerified === true).length;
+      const failed = otps.filter(o => o.status === 'failed' || (o.status !== 'verified' && o.attempts >= 3)).length;
+      const pending = total - verified - failed;
+      return {
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        totalAttempts: total,
+        verifiedCount: verified,
+        failedCount: failed,
+        pendingCount: pending
+      };
+    });
+
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error fetching user OTP stats:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 const createUser = async (req, res) => {
   try {
-    const { name, email, phone, company, services, initialBalance } = req.body;
+    const { name, email, phone, company, password, services, initialBalance } = req.body;
     
-    const existingUser = await User.findOne({ where: { [Op.or]: [{ email }, { phone }] } });
+    console.log('Create user request:', { name, email, phone, company, hasPassword: !!password, services, initialBalance });
+    
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, email, and password are required' 
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      where: { 
+        [Op.or]: [
+          { email: email },
+          { phone: phone }
+        ] 
+      } 
+    });
+    
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
     
+    // Create user with password
     const user = await User.create({
       name,
       email,
-      phone,
-      company,
+      phone: phone || null,
+      company: company || null,
+      password: password, // This will be hashed by the model hook
       services: services || { sms: true, whatsapp: false, email: true },
       balance: initialBalance || 0,
       isActive: true
     });
     
-    await ActivityLog?.create({
+    // Remove password from response
+    const userResponse = user.toJSON();
+    delete userResponse.password;
+    
+    // Log activity
+    await ActivityLog.create({
       userId: user.id,
       action: 'user_created',
       details: { createdBy: req.admin?.id || 'system' }
     });
     
-    res.json({ success: true, user });
+    console.log('User created successfully:', user.id);
+    
+    res.json({ success: true, user: userResponse });
   } catch (error) {
     console.error('Create user error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // Update user
 const updateUser = async (req, res) => {
   try {
@@ -239,44 +300,26 @@ const addBalance = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// Get OTP requests
 const getOTPRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 50, channel, status } = req.query;
+    const { page = 1, limit = 50, channel, status, verified } = req.query;
     const where = {};
     if (channel && channel !== 'all') where.channel = channel;
     if (status && status !== 'all') where.status = status;
-    
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    
-    let count = 0;
-    let rows = [];
-    
-    if (OTPRequest) {
-      const result = await OTPRequest.findAndCountAll({
-        where,
-        include: User ? [{ model: User, as: 'User', attributes: ['id', 'name', 'email', 'phone'], required: false }] : [],
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset
-      });
-      count = result.count;
-      rows = result.rows;
+    if (verified !== undefined && verified !== 'all') {
+      where.isVerified = verified === 'true';
     }
     
-    res.json({
-      success: true,
-      requests: rows,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
-      }
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { count, rows } = await OTPRequest.findAndCountAll({
+      where,
+      include: [{ model: User, as: 'User', attributes: ['id', 'name', 'email'] }],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset
     });
+    res.json({ success: true, requests: rows, pagination: { total: count, page, limit, totalPages: Math.ceil(count / limit) } });
   } catch (error) {
-    console.error('Get OTP requests error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -427,5 +470,6 @@ module.exports = {
   getBillingSummary,
   getServices,
   addUserPayment,
-  updateUserServices
+  updateUserServices,
+  getUserOTPStats
 };

@@ -1,37 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const { 
-  adminLogin, 
+  adminLogin,
   userLogin, 
   verifyOTP, 
   resendOTP, 
-  getUserInfo 
+  getUserInfo,
+  unifiedLogin
 } = require('../controllers/authController');
 const { authenticateUser } = require('../middleware/auth');
 const { otpSendLimiter } = require('../middleware/rateLimiter');
+const { refreshAccessToken, logout } = require('../controllers/authController');
 
-// Public routes
+// Admin route
 router.post('/admin/login', adminLogin);
+
+// User OTP routes (for end customers)
 router.post('/user/login', otpSendLimiter, userLogin);
 router.post('/user/verify', verifyOTP);
 router.post('/user/resend', otpSendLimiter, resendOTP);
+router.post('/refresh', refreshAccessToken);
+router.post('/logout', logout);
 
-// Protected routes
+// Unified dashboard login (email/phone + password)
+router.post('/login', unifiedLogin);
+
+// Protected route
 router.get('/user/me', authenticateUser, getUserInfo);
-
-// Test route
-router.get('/test', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Auth routes are working!',
-    endpoints: {
-      adminLogin: 'POST /api/auth/admin/login',
-      userLogin: 'POST /api/auth/user/login',
-      verifyOTP: 'POST /api/auth/user/verify',
-      resendOTP: 'POST /api/auth/user/resend',
-      getUserInfo: 'GET /api/auth/user/me'
-    }
-  });
-});
 
 module.exports = router;

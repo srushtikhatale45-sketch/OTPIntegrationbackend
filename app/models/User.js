@@ -1,6 +1,7 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const User = sequelize.define('User', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -8,6 +9,7 @@ const User = sequelize.define('User', {
   phone: { type: DataTypes.STRING(20) },
   name: { type: DataTypes.STRING, allowNull: false },
   company: { type: DataTypes.STRING },
+  password: { type: DataTypes.STRING, allowNull: false },
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
   apiKey: { type: DataTypes.STRING, unique: true, field: 'api_key' },
   apiSecret: { type: DataTypes.STRING, field: 'api_secret' },
@@ -26,13 +28,19 @@ User.beforeCreate(async (user) => {
     user.apiKey = crypto.randomBytes(32).toString('hex');
     user.apiSecret = crypto.randomBytes(32).toString('hex');
   }
+  if (user.password) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
 });
 
-User.associate = (models) => {
-  User.hasMany(models.Campaign, { foreignKey: 'userId', as: 'campaigns' });
-  User.hasMany(models.Message, { foreignKey: 'userId', as: 'messages' });
-  User.hasMany(models.Payment, { foreignKey: 'userId', as: 'payments' });
-  User.hasMany(models.OTPRequest, { foreignKey: 'userId', as: 'otpRequests' });
+User.beforeUpdate(async (user) => {
+  if (user.changed('password')) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
+});
+
+User.prototype.comparePassword = async function(password) {
+  return bcrypt.compare(password, this.password);
 };
 
 module.exports = User;
