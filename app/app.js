@@ -66,7 +66,7 @@ app.get('/api/test', (req, res) => {
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
+  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found .` });
 });
 
 module.exports = app;
