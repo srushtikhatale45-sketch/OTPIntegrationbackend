@@ -15,24 +15,29 @@ const userRoutes = require('./routes/userRoutes');
 const otpRoutes = require('./routes/otpRoutes');
 
 const app = express();
-
-// CORS
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://otpintegrationservices.vercel.app',
-  'https://otpintegrationservices-7rdz6kghe.vercel.app',
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl) in development
+    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
+    
+    // Allow localhost origins
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    
+    // Allow any Vercel preview deployment subdomain
+    if (origin.match(/^https:\/\/otpintegrationservices-.*\.vercel\.app$/)) {
+      return callback(null, true);
+    }
+    
+    // Otherwise, reject
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
