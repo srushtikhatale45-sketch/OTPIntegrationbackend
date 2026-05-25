@@ -17,9 +17,26 @@ const otpRoutes = require('./routes/otpRoutes');
 const app = express();
 
 // CORS
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://otpintegrationservices.vercel.app',
+  'https://otpintegrationservices-7rdz6kghe.vercel.app',
+];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174','otpintegrationservices-kieul7q2m.vercel.app','https://otpintegrationservices.vercel.app/user/login'],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl) in development
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 app.use(express.json());
 app.use(cookieParser());
