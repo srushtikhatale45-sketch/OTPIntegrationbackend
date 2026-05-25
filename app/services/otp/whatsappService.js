@@ -132,8 +132,8 @@ const sendWhatsAppOTPAsText = async (phoneNumber, otpCode) => {
 
 // Combined function that tries template first, then falls back to text
 const sendWhatsAppOTPWithFallback = async (phoneNumber, otpCode) => {
-  // First try with template
-  const templateResult = await sendWhatsAppOTP(phoneNumber, otpCode);
+  // First try with template using the correct function name
+  const templateResult = await sendOTPviaWhatsApp(phoneNumber, otpCode);
   
   if (templateResult.success) {
     return templateResult;
@@ -145,7 +145,6 @@ const sendWhatsAppOTPWithFallback = async (phoneNumber, otpCode) => {
   
   return textResult;
 };
-
 module.exports = { 
   sendOTPviaWhatsApp, 
   sendWhatsAppOTPAsText, 
