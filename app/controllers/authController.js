@@ -41,19 +41,50 @@ const adminLogin = async (req, res) => {
   }
 };
 
-// -------------------- User OTP send (for end customers) --------------------
-// This endpoint does NOT set cookies – it only sends OTP.
+// -------------------- User OTP send (for end customers AND end users) --------------------
 const userLogin = async (req, res) => {
   try {
     const { identifier, channel } = req.body;
-    const user = await User.findOne({
+    
+    // Find or create user as 'end_user' if not exists
+    let user = await User.findOne({
       where: { [Op.or]: [{ email: identifier }, { phone: identifier }] }
     });
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    // If user doesn't exist, create as end_user (for visitors)
+    if (!user) {
+      let emailValue = null;
+      let phoneValue = null;
+      let nameValue = '';
+      
+      if (identifier.includes('@')) {
+        emailValue = identifier;
+        nameValue = identifier.split('@')[0];
+      } else {
+        phoneValue = identifier;
+        nameValue = identifier.slice(0, 10);
+        // Generate a dummy email for phone-only users (required by model)
+        emailValue = `user_${Date.now()}@temp.otp.com`;
+      }
+      
+      user = await User.create({
+        name: nameValue,
+        email: emailValue,
+        phone: phoneValue,
+        password: Math.random().toString(36).slice(-8),
+        type: 'end_user',
+        balance: 0,
+        services: { sms: true, whatsapp: true, email: true }
+      });
+    }
+    
     if (!user.isActive) return res.status(403).json({ success: false, message: 'Account inactive' });
 
+    // For client_admin type, check balance and deduct cost
+    const isClientAdmin = user.type === 'client_admin';
     const price = PRICES[channel];
-    if (parseFloat(user.balance) < price) {
+    
+    if (isClientAdmin && parseFloat(user.balance) < price) {
       return res.status(402).json({ success: false, message: 'Insufficient balance', balance: user.balance });
     }
 
@@ -66,38 +97,44 @@ const userLogin = async (req, res) => {
       channel,
       otpCode,
       status: 'pending',
-      cost: price,
+      cost: isClientAdmin ? price : 0,
       expiresAt,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
 
     let deliveryResult;
-    if (channel === 'sms') deliveryResult = await sendOTPviaSMS(user.phone, otpCode);
-    else if (channel === 'whatsapp') deliveryResult = await sendWhatsAppOTPWithFallback(user.phone, otpCode);
-    else deliveryResult = await sendOTPviaEmail(user.email, otpCode);
+    if (channel === 'sms') deliveryResult = await sendOTPviaSMS(identifier, otpCode);
+    else if (channel === 'whatsapp') deliveryResult = await sendWhatsAppOTPWithFallback(identifier, otpCode);
+    else deliveryResult = await sendOTPviaEmail(identifier, otpCode);
 
     if (deliveryResult.success) {
       await otpRequest.update({ status: 'sent' });
-      const newBalance = parseFloat(user.balance) - price;
-      await user.update({ balance: newBalance });
-      await BillingRecord.create({
-        userId: user.id,
-        type: 'debit',
-        amount: price,
-        description: `OTP via ${channel}`,
-        otpRequestId: otpRequest.id
-      });
+      
+      if (isClientAdmin) {
+        const newBalance = parseFloat(user.balance) - price;
+        await user.update({ balance: newBalance });
+        await BillingRecord.create({
+          userId: user.id,
+          type: 'debit',
+          amount: price,
+          description: `OTP via ${channel}`,
+          otpRequestId: otpRequest.id
+        });
+      }
+      
       await ActivityLog.create({
         userId: user.id,
         action: 'otp_sent',
-        details: { channel, identifier }
+        details: { channel, identifier, userType: user.type }
       });
+      
       return res.json({
         success: true,
         message: `OTP sent via ${channel}`,
         requestId: otpRequest.id,
-        channel
+        channel,
+        userType: user.type
       });
     } else {
       await otpRequest.update({ status: 'failed' });
@@ -108,8 +145,7 @@ const userLogin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// -------------------- Verify OTP (for end customers) --------------------
+// -------------------- Verify OTP --------------------
 const verifyOTP = async (req, res) => {
   try {
     const { requestId, otpCode } = req.body;
@@ -127,10 +163,16 @@ const verifyOTP = async (req, res) => {
     }
     await otpRequest.update({ isVerified: true, status: 'verified' });
     const user = await User.findByPk(otpRequest.userId);
-    // Do NOT return a token – this is for end customers only.
+    
+    // Generate tokens and set cookies (not return in body)
+    const { accessToken, refreshToken } = generateTokens(user, user.type === 'client_admin' ? 'user' : 'end_user');
+    setTokenCookies(res, accessToken, refreshToken);
+    
+    // Do NOT send token in JSON body
     res.json({
       success: true,
       verified: true,
+      userType: user.type,
       user: {
         id: user.id,
         name: user.name,
@@ -146,7 +188,6 @@ const verifyOTP = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // -------------------- Resend OTP --------------------
 const resendOTP = async (req, res) => {
   // ... implement similarly to userLogin but for resend

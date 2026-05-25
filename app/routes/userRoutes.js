@@ -6,7 +6,8 @@ const {
   getCampaigns, 
   createCampaign, 
   getMessages, 
-  getUserReport 
+  getUserReport,
+  getEndUserDashboard
 } = require('../controllers/userController');
 
 router.use(authenticateUser);
@@ -16,5 +17,5 @@ router.get('/campaigns', getCampaigns);
 router.post('/campaigns', createCampaign);
 router.get('/messages', getMessages);
 router.get('/report', getUserReport);
-
+router.get('/enduser-dashboard', authenticateUser, getEndUserDashboard);
 module.exports = router;
