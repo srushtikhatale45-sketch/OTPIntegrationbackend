@@ -6,7 +6,8 @@ const {
   verifyOTP, 
   resendOTP, 
   getUserInfo,
-  unifiedLogin
+  unifiedLogin,
+  refreshAccessToken
 } = require('../controllers/authController');
 const { authenticateUser } = require('../middleware/auth');
 const { otpSendLimiter } = require('../middleware/rateLimiter');
@@ -18,7 +19,7 @@ router.post('/admin/login', adminLogin);
 router.post('/user/login', otpSendLimiter, userLogin);
 router.post('/user/verify', verifyOTP);
 router.post('/user/resend', otpSendLimiter, resendOTP);
-
+router.post('/refresh', refreshAccessToken);
 // Unified dashboard login (email/phone + password) for superadmin & client admin
 router.post('/login', unifiedLogin);
 
