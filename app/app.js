@@ -18,7 +18,7 @@ const app = express();
 
 // CORS
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174','https://otpintegrationservices.vercel.app'],
+  origin: ['http://localhost:5173', 'http://localhost:5174','otpintegrationservices-kieul7q2m.vercel.app'],
   credentials: true
 }));
 app.use(express.json());

@@ -145,7 +145,6 @@ const userLogin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// -------------------- Verify OTP --------------------
 const verifyOTP = async (req, res) => {
   try {
     const { requestId, otpCode } = req.body;
@@ -164,11 +163,10 @@ const verifyOTP = async (req, res) => {
     await otpRequest.update({ isVerified: true, status: 'verified' });
     const user = await User.findByPk(otpRequest.userId);
     
-    // Generate tokens and set cookies (not return in body)
+    // Generate tokens and set httpOnly cookies
     const { accessToken, refreshToken } = generateTokens(user, user.type === 'client_admin' ? 'user' : 'end_user');
     setTokenCookies(res, accessToken, refreshToken);
     
-    // Do NOT send token in JSON body
     res.json({
       success: true,
       verified: true,
