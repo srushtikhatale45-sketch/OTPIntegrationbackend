@@ -16,17 +16,20 @@ const generateTokens = (user, type = 'user') => {
 
 const setTokenCookies = (res, accessToken, refreshToken) => {
   const isProduction = process.env.NODE_ENV === 'production';
+  const sameSite = isProduction ? 'none' : 'lax'; // 'none' required for cross-site requests in production
   res.cookie('accessToken', accessToken, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000
+    sameSite: sameSite,
+    maxAge: 15 * 60 * 1000,
+    domain: isProduction ? '.onrender.com' : undefined // optional: share across subdomains
   });
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    sameSite: sameSite,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    domain: isProduction ? '.onrender.com' : undefined
   });
 };
 
