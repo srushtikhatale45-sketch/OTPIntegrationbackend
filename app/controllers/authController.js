@@ -216,13 +216,13 @@ const getUserInfo = async (req, res) => {
 const unifiedLogin = async (req, res) => {
   try {
     const { identifier, password } = req.body;
-    // Check Admin
+    // Check admin
     let admin = await Admin.findOne({ where: { email: identifier } });
     if (admin) {
       const isValid = await admin.comparePassword(password);
       if (isValid) {
         const { accessToken, refreshToken } = generateTokens(admin, 'admin');
-        setTokenCookies(res, accessToken, refreshToken);
+        setTokenCookies(res, accessToken, refreshToken); // ← must be here
         return res.json({
           success: true,
           role: 'admin',
