@@ -146,18 +146,53 @@ const userLogin = async (req, res) => {
   }
 };
 const verifyOTP = async (req, res) => {
-  // ... validation ...
-  const user = await User.findByPk(otpRequest.userId);
-  const { accessToken, refreshToken } = generateTokens(user, user.type === 'client_admin' ? 'user' : 'end_user');
-  setTokenCookies(res, accessToken, refreshToken);
-  res.json({
-    success: true,
-    verified: true,
-    userType: user.type,
-    user: { id: user.id, name: user.name, email: user.email, phone: user.phone, balance: user.balance },
-    channel: otpRequest.channel,
-    otp_cost: parseFloat(otpRequest.cost)
-  });
+  try {
+    const { requestId, otpCode } = req.body;
+    console.log('Verifying OTP:', { requestId, otpCode });
+
+    const otpRequest = await OTPRequest.findOne({
+      where: { id: requestId, status: 'sent', expiresAt: { [Op.gt]: new Date() } }
+    });
+    if (!otpRequest) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+    }
+    if (otpRequest.attempts >= 3) {
+      await otpRequest.update({ status: 'failed' });
+      return res.status(400).json({ success: false, message: 'Too many attempts' });
+    }
+    if (otpRequest.otpCode !== otpCode) {
+      await otpRequest.update({ attempts: otpRequest.attempts + 1 });
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    }
+    await otpRequest.update({ isVerified: true, status: 'verified' });
+    const user = await User.findByPk(otpRequest.userId);
+    if (!user) {
+      return res.status(500).json({ success: false, message: 'User not found' });
+    }
+
+    // Generate tokens and set cookies
+    const tokenType = user.type === 'client_admin' ? 'user' : 'end_user';
+    const { accessToken, refreshToken } = generateTokens(user, tokenType);
+    setTokenCookies(res, accessToken, refreshToken);
+
+    res.json({
+      success: true,
+      verified: true,
+      userType: user.type,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        balance: user.balance
+      },
+      channel: otpRequest.channel,
+      otp_cost: parseFloat(otpRequest.cost)
+    });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 // -------------------- Resend OTP --------------------
 const resendOTP = async (req, res) => {
