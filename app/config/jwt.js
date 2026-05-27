@@ -15,25 +15,22 @@ const generateTokens = (user, type = 'user') => {
 };
 
 const setTokenCookies = (res, accessToken, refreshToken) => {
-
   res.cookie('accessToken', accessToken, {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    path: '/',
     maxAge: 15 * 60 * 1000,
+    path: '/'
   });
 
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/'
   });
-
 };
-
 const clearTokenCookies = (res) => {
   res.clearCookie('accessToken');
   res.clearCookie('refreshToken');
