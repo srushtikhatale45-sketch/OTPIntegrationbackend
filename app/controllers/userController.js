@@ -7,7 +7,7 @@ const Campaign = db.Campaign;
 const Message = db.Message;
 const Payment = db.Payment;
 const User = db.User;
-
+const OTPRequest = db.OTPRequest;
 const PRICES = {
   sms: 0.03,
   whatsapp: 0.02,
@@ -147,7 +147,6 @@ const getUserReport = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// Get end user dashboard (OTP history only)
 const getEndUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
