@@ -13,11 +13,12 @@ const generateTokens = (user, type = 'user') => {
   );
   return { accessToken, refreshToken };
 };
+
 const setTokenCookies = (res, accessToken, refreshToken) => {
   const isProduction = process.env.NODE_ENV === 'production';
   res.cookie('accessToken', accessToken, {
     httpOnly: true,
-    secure: isProduction,          // must be true when sameSite='none'
+    secure: isProduction,          // false for localhost
     sameSite: isProduction ? 'none' : 'lax',
     maxAge: 15 * 60 * 1000,
   });

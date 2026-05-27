@@ -29,12 +29,7 @@ const adminLogin = async (req, res) => {
     }
     const { accessToken, refreshToken } = generateTokens(admin, 'admin');
     setTokenCookies(res, accessToken, refreshToken);
-    // Optionally store refreshToken in database (AuthSession)
-    res.json({
-      success: true,
-      role: 'admin',
-      admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role }
-    });
+    res.json({ success: true, role: 'admin', admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } });
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -44,29 +39,20 @@ const adminLogin = async (req, res) => {
 // -------------------- User OTP send (for end customers AND end users) --------------------
 const userLogin = async (req, res) => {
   try {
-    const { identifier, channel } = req.body;
-    
-    // Find or create user as 'end_user' if not exists
+    const { identifier, channel, name } = req.body;
     let user = await User.findOne({
       where: { [Op.or]: [{ email: identifier }, { phone: identifier }] }
     });
-    
-    // If user doesn't exist, create as end_user (for visitors)
     if (!user) {
-      let emailValue = null;
-      let phoneValue = null;
-      let nameValue = '';
-      
+      let emailValue = null, phoneValue = null, nameValue = name || '';
       if (identifier.includes('@')) {
         emailValue = identifier;
-        nameValue = identifier.split('@')[0];
+        if (!nameValue) nameValue = identifier.split('@')[0];
       } else {
         phoneValue = identifier;
-        nameValue = identifier.slice(0, 10);
-        // Generate a dummy email for phone-only users (required by model)
+        if (!nameValue) nameValue = identifier.slice(0, 10);
         emailValue = `user_${Date.now()}@temp.otp.com`;
       }
-      
       user = await User.create({
         name: nameValue,
         email: emailValue,
@@ -77,20 +63,16 @@ const userLogin = async (req, res) => {
         services: { sms: true, whatsapp: true, email: true }
       });
     }
-    
     if (!user.isActive) return res.status(403).json({ success: false, message: 'Account inactive' });
 
-    // For client_admin type, check balance and deduct cost
     const isClientAdmin = user.type === 'client_admin';
     const price = PRICES[channel];
-    
     if (isClientAdmin && parseFloat(user.balance) < price) {
       return res.status(402).json({ success: false, message: 'Insufficient balance', balance: user.balance });
     }
 
     const otpCode = generateOTPCode();
     const expiresAt = new Date(Date.now() + 5 * 60000);
-
     const otpRequest = await OTPRequest.create({
       userId: user.id,
       identifier,
@@ -110,7 +92,6 @@ const userLogin = async (req, res) => {
 
     if (deliveryResult.success) {
       await otpRequest.update({ status: 'sent' });
-      
       if (isClientAdmin) {
         const newBalance = parseFloat(user.balance) - price;
         await user.update({ balance: newBalance });
@@ -122,13 +103,11 @@ const userLogin = async (req, res) => {
           otpRequestId: otpRequest.id
         });
       }
-      
       await ActivityLog.create({
         userId: user.id,
         action: 'otp_sent',
         details: { channel, identifier, userType: user.type }
       });
-      
       return res.json({
         success: true,
         message: `OTP sent via ${channel}`,
@@ -145,17 +124,15 @@ const userLogin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// -------------------- Verify OTP (sets cookie) 
 const verifyOTP = async (req, res) => {
   try {
     const { requestId, otpCode } = req.body;
-    console.log('Verifying OTP:', { requestId, otpCode });
-
     const otpRequest = await OTPRequest.findOne({
       where: { id: requestId, status: 'sent', expiresAt: { [Op.gt]: new Date() } }
     });
-    if (!otpRequest) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
-    }
+    if (!otpRequest) return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     if (otpRequest.attempts >= 3) {
       await otpRequest.update({ status: 'failed' });
       return res.status(400).json({ success: false, message: 'Too many attempts' });
@@ -166,19 +143,18 @@ const verifyOTP = async (req, res) => {
     }
     await otpRequest.update({ isVerified: true, status: 'verified' });
     const user = await User.findByPk(otpRequest.userId);
-    if (!user) {
-      return res.status(500).json({ success: false, message: 'User not found' });
-    }
+    if (!user) return res.status(500).json({ success: false, message: 'User not found' });
 
-    // Generate tokens and set cookies
+    // Generate token and set cookie (optional for dashboard)
     const tokenType = user.type === 'client_admin' ? 'user' : 'end_user';
     const { accessToken, refreshToken } = generateTokens(user, tokenType);
     setTokenCookies(res, accessToken, refreshToken);
 
+    // Return userType explicitly
     res.json({
       success: true,
       verified: true,
-      userType: user.type,
+      userType: user.type,          // ← critical
       user: {
         id: user.id,
         name: user.name,
@@ -194,13 +170,11 @@ const verifyOTP = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// -------------------- Resend OTP --------------------
-const resendOTP = async (req, res) => {
-  // ... implement similarly to userLogin but for resend
-  res.status(501).json({ success: false, message: 'Not implemented' });
-};
 
-// -------------------- Get user info (protected) --------------------
+// -------------------- Resend OTP --------------------
+const resendOTP = async (req, res) => { res.status(501).json({ success: false, message: 'Not implemented' }); };
+
+// -------------------- Get user info --------------------
 const getUserInfo = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
@@ -212,47 +186,27 @@ const getUserInfo = async (req, res) => {
   }
 };
 
-// -------------------- Unified Dashboard Login (cookie based) --------------------
+// -------------------- Unified Dashboard Login (email+password) --------------------
 const unifiedLogin = async (req, res) => {
   try {
     const { identifier, password } = req.body;
-    // Check admin
     let admin = await Admin.findOne({ where: { email: identifier } });
     if (admin) {
       const isValid = await admin.comparePassword(password);
       if (isValid) {
         const { accessToken, refreshToken } = generateTokens(admin, 'admin');
-        setTokenCookies(res, accessToken, refreshToken); // ← must be here
-        return res.json({
-          success: true,
-          role: 'admin',
-          admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role }
-        });
+        setTokenCookies(res, accessToken, refreshToken);
+        return res.json({ success: true, role: 'admin', admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } });
       }
     }
-    // Check User
-    const user = await User.findOne({
-      where: { [Op.or]: [{ email: identifier }, { phone: identifier }] }
-    });
+    const user = await User.findOne({ where: { [Op.or]: [{ email: identifier }, { phone: identifier }] } });
     if (user) {
       if (!user.isActive) return res.status(403).json({ success: false, message: 'Account inactive' });
       const isValid = await user.comparePassword(password);
       if (isValid) {
         const { accessToken, refreshToken } = generateTokens(user, 'user');
         setTokenCookies(res, accessToken, refreshToken);
-        return res.json({
-          success: true,
-          role: 'user',
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            company: user.company,
-            balance: user.balance,
-            services: user.services
-          }
-        });
+        return res.json({ success: true, role: 'user', user: { id: user.id, name: user.name, email: user.email, phone: user.phone, company: user.company, balance: user.balance, services: user.services } });
       }
     }
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -262,13 +216,12 @@ const unifiedLogin = async (req, res) => {
   }
 };
 
-// -------------------- Refresh Access Token --------------------
+// -------------------- Refresh --------------------
 const refreshAccessToken = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) return res.status(401).json({ success: false, message: 'No refresh token' });
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
-    // Find user or admin
     let user;
     if (decoded.type === 'admin') {
       user = await Admin.findByPk(decoded.id);
@@ -282,12 +235,7 @@ const refreshAccessToken = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE || '15m' }
     );
-    res.cookie('accessToken', newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 15 * 60 * 1000
-    });
+    res.cookie('accessToken', newAccessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 15 * 60 * 1000 });
     res.json({ success: true });
   } catch (err) {
     res.status(401).json({ success: false, message: 'Invalid refresh token' });

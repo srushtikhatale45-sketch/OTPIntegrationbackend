@@ -150,24 +150,11 @@ const getUserReport = async (req, res) => {
 const getEndUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
-    const otpHistory = await OTPRequest.findAll({
-      where: { userId },
-      attributes: ['id', 'identifier', 'channel', 'status', 'isVerified', 'cost', 'createdAt'],
-      order: [['createdAt', 'DESC']],
-      limit: 50
-    });
-    const stats = {
-      total: otpHistory.length,
-      verified: otpHistory.filter(o => o.isVerified).length,
-      failed: otpHistory.filter(o => o.status === 'failed').length,
-      pending: otpHistory.filter(o => o.status === 'pending' || o.status === 'sent').length
-    };
     const user = await User.findByPk(userId, {
       attributes: ['id', 'name', 'email', 'phone', 'type']
     });
-    res.json({ success: true, otpHistory, stats, user });
+    res.json({ success: true, user });
   } catch (error) {
-    console.error('Get end user dashboard error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
