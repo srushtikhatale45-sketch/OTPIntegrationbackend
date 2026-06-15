@@ -11,7 +11,8 @@ const Message = sequelize.define('Message', {
   status: { type: DataTypes.ENUM('pending', 'sent', 'delivered', 'failed', 'read'), defaultValue: 'pending' },
   cost: { type: DataTypes.DECIMAL(10, 4), defaultValue: 0 },
   deliveredAt: { type: DataTypes.DATE, field: 'delivered_at' },
-  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' }
+  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' },
+  customerId: { type: DataTypes.UUID, allowNull: true, field: 'customer_id' }   // ✅ moved inside
 }, { 
   tableName: 'messages', 
   timestamps: false, 
@@ -21,6 +22,7 @@ const Message = sequelize.define('Message', {
 Message.associate = (models) => {
   Message.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
   Message.belongsTo(models.Campaign, { foreignKey: 'campaignId', as: 'campaign' });
+  Message.belongsTo(models.Customer, { foreignKey: 'customerId', as: 'customer' });
 };
 
 module.exports = Message;

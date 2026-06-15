@@ -160,6 +160,21 @@ const getEndUserDashboard = async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+  
+};
+const createCustomer = async (req, res) => {
+  try {
+    const { name, email, phone } = req.body;
+    const customer = await Customer.create({
+      userId: req.user.id,
+      name,
+      email,
+      phone
+    });
+    res.json({ success: true, customer });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
-module.exports = { getProfile, getCampaigns, createCampaign, getMessages, getUserReport , getEndUserDashboard };
+module.exports = { getProfile, getCampaigns, createCampaign, getMessages, getUserReport , getEndUserDashboard, createCustomer };

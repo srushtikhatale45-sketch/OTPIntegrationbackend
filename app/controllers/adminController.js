@@ -94,7 +94,7 @@ const getUsers = async (req, res) => {
     const { page = 1, limit = 20, search = '' } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    let where = {};
+    let where = { type: 'client_admin'};
     if (search) {
       where = {
         [Op.or]: [
@@ -445,6 +445,7 @@ const addUserPayment = async (req, res) => {
   }
 };
 
+
 // Get user dashboard data for admin viewing
 const getUserDashboardData = async (req, res) => {
   try {
@@ -501,6 +502,17 @@ const updateUserServices = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+const getCustomers = async (req, res) => {
+  try {
+    const customers = await Customer.findAll({
+      include: [{ model: User, as: 'clientAdmin', attributes: ['id', 'name', 'email'] }],
+      order: [['createdAt', 'DESC']]
+    });
+    res.json({ success: true, customers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 module.exports = {
   adminLogin,
@@ -517,5 +529,6 @@ module.exports = {
   addUserPayment,
   updateUserServices,
   getUserOTPStats,
-  getUserDashboardData
+  getUserDashboardData,
+  getCustomers
 };

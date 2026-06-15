@@ -14,7 +14,8 @@ const OTPRequest = sequelize.define('OTPRequest', {
   expiresAt: { type: DataTypes.DATE, allowNull: false, field: 'expires_at' },
   ipAddress: { type: DataTypes.STRING(45), field: 'ip_address' },
   userAgent: { type: DataTypes.TEXT, field: 'user_agent' },
-  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' }
+  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' },
+  customerId: { type: DataTypes.UUID, allowNull: true, field: 'customer_id' }
 }, { 
   tableName: 'otp_requests', 
   timestamps: false, 
@@ -24,6 +25,7 @@ const OTPRequest = sequelize.define('OTPRequest', {
 // Association method
 OTPRequest.associate = (models) => {
   OTPRequest.belongsTo(models.User, { foreignKey: 'userId', as: 'User' });
+  OTPRequest.belongsTo(models.Customer, { foreignKey: 'customerId', as: 'Customer' });
 };
 
 module.exports = OTPRequest;

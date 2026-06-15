@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { generateTokens, setTokenCookies, clearTokenCookies } = require('../config/jwt');
 const Admin = require('../models/Admin');
 const User = require('../models/User');
+const Customer = require('../models/Customer');        // ADDED
 const OTPRequest = require('../models/OTPRequest');
 const BillingRecord = require('../models/BillingRecord');
 const ActivityLog = require('../models/ActivityLog');
@@ -40,7 +41,7 @@ const adminLogin = async (req, res) => {
 // -------------------- User OTP send (for end customers AND end users) --------------------
 const userLogin = async (req, res) => {
   try {
-    const { identifier, channel, name } = req.body;
+    const { identifier, channel, name, customerId } = req.body;   // ADDED customerId
     let user = await User.findOne({
       where: { [Op.or]: [{ email: identifier }, { phone: identifier }] }
     });
@@ -72,10 +73,38 @@ const userLogin = async (req, res) => {
       return res.status(402).json({ success: false, message: 'Insufficient balance', balance: user.balance });
     }
 
+    // -------- CUSTOMER HANDLING (only for client admins) --------
+    let customer = null;
+    if (isClientAdmin) {
+      if (customerId) {
+        // verify that the customer belongs to this client admin
+        customer = await Customer.findOne({ where: { id: customerId, userId: user.id } });
+        if (!customer) {
+          return res.status(404).json({ success: false, message: 'Customer not found under this account' });
+        }
+      } else if (identifier) {
+        // try to find existing customer by email/phone under this client admin
+        customer = await Customer.findOne({
+          where: { userId: user.id, [Op.or]: [{ email: identifier }, { phone: identifier }] }
+        });
+        if (!customer) {
+          // create a new customer under this client admin
+          customer = await Customer.create({
+            userId: user.id,
+            name: name || (identifier.includes('@') ? identifier.split('@')[0] : identifier.slice(0, 10)),
+            email: identifier.includes('@') ? identifier : null,
+            phone: !identifier.includes('@') ? identifier : null
+          });
+        }
+      }
+    }
+    // -----------------------------------------------------------
+
     const otpCode = generateOTPCode();
     const expiresAt = new Date(Date.now() + 5 * 60000);
     const otpRequest = await OTPRequest.create({
       userId: user.id,
+      customerId: customer?.id,          // ADDED
       identifier,
       channel,
       otpCode,
@@ -100,21 +129,22 @@ const userLogin = async (req, res) => {
           userId: user.id,
           type: 'debit',
           amount: price,
-          description: `OTP via ${channel}`,
+          description: `OTP via ${channel}${customer ? ` for customer ${customer.name}` : ''}`,
           otpRequestId: otpRequest.id
         });
       }
       await ActivityLog.create({
         userId: user.id,
         action: 'otp_sent',
-        details: { channel, identifier, userType: user.type }
+        details: { channel, identifier, userType: user.type, customerId: customer?.id }
       });
       return res.json({
         success: true,
         message: `OTP sent via ${channel}`,
         requestId: otpRequest.id,
         channel,
-        userType: user.type
+        userType: user.type,
+        customer: customer ? { id: customer.id, name: customer.name } : null   // optional
       });
     } else {
       await otpRequest.update({ status: 'failed' });
