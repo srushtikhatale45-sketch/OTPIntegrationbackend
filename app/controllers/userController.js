@@ -8,7 +8,7 @@ const Message = db.Message;
 const Payment = db.Payment;
 const User = db.User;
 const OTPRequest = db.OTPRequest;
-
+const BillingRecord = db.BillingRecord;
 // Updated prices to Indian Rupees (INR)
 const PRICES = {
   sms: 1.00,      // ₹1.00 per SMS OTP
@@ -42,7 +42,6 @@ const getCampaigns = async (req, res) => {
   }
 };
 
-// Create campaign
 const createCampaign = async (req, res) => {
   try {
     const { name, message, channel, recipients } = req.body;
@@ -72,19 +71,24 @@ const createCampaign = async (req, res) => {
     const newBalance = parseFloat(user.balance) - totalCost;
     await user.update({ balance: newBalance });
     
-    // Create individual messages and send
+    // Create BillingRecord for the campaign (debit)
+    await BillingRecord.create({
+      userId: req.user.id,
+      type: 'debit',
+      amount: totalCost,
+      description: `Campaign "${name}" via ${channel}`,
+      campaignId: campaign.id
+    });
+    
+    // Create individual messages and send (existing code)
     let successCount = 0;
     let failedCount = 0;
     
     for (const recipient of recipients) {
       let deliveryResult;
-      if (channel === 'sms') {
-        deliveryResult = await sendSMSOTP(recipient, 'OTP'); // Simplified
-      } else if (channel === 'whatsapp') {
-        deliveryResult = await sendWhatsAppOTPWithFallback(recipient, 'OTP');
-      } else {
-        deliveryResult = await sendEmailOTP(recipient, 'OTP');
-      }
+      if (channel === 'sms') deliveryResult = await sendSMSOTP(recipient, 'OTP');
+      else if (channel === 'whatsapp') deliveryResult = await sendWhatsAppOTPWithFallback(recipient, 'OTP');
+      else deliveryResult = await sendEmailOTP(recipient, 'OTP');
       
       const status = deliveryResult.success ? 'delivered' : 'failed';
       if (deliveryResult.success) successCount++; else failedCount++;
@@ -162,6 +166,17 @@ const getEndUserDashboard = async (req, res) => {
   }
   
 };
+// Get all customers for the logged-in client admin
+const getCustomers = async (req, res) => {
+  try {
+    const customers = await Customer.findAll({ where: { userId: req.user.id } });
+    res.json({ success: true, customers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Create a new customer
 const createCustomer = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -177,4 +192,30 @@ const createCustomer = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, getCampaigns, createCampaign, getMessages, getUserReport , getEndUserDashboard, createCustomer };
+// Update customer
+const updateCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone } = req.body;
+    const customer = await Customer.findOne({ where: { id, userId: req.user.id } });
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    await customer.update({ name, email, phone });
+    res.json({ success: true, customer });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete customer
+const deleteCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await Customer.findOne({ where: { id, userId: req.user.id } });
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    await customer.destroy();
+    res.json({ success: true, message: 'Customer deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+module.exports = { getProfile, getCampaigns, createCampaign, getMessages, getUserReport , getEndUserDashboard, createCustomer, getCustomers, updateCustomer, deleteCustomer };

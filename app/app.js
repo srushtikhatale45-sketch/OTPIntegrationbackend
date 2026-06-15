@@ -13,7 +13,7 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const userRoutes = require('./routes/userRoutes');
 const otpRoutes = require('./routes/otpRoutes');
-
+const publicRoutes = require('./routes/publicRoutes');
 const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
@@ -54,7 +54,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/otp', otpRoutes);
-
+app.use('/api/public', publicRoutes);
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });

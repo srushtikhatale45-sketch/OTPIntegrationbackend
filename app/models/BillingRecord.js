@@ -8,7 +8,9 @@ const BillingRecord = sequelize.define('BillingRecord', {
   amount: { type: DataTypes.DECIMAL(10, 4), allowNull: false },
   description: { type: DataTypes.STRING },
   otpRequestId: { type: DataTypes.UUID, field: 'otp_request_id' },
-  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' }
+  createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'created_at' },
+ customerId: { type: DataTypes.UUID, allowNull: true, field: 'customer_id' },
+ campaignId: { type: DataTypes.UUID, allowNull: true, field: 'campaign_id' }
 }, { 
   tableName: 'billing_records', 
   timestamps: false, 
@@ -19,6 +21,8 @@ const BillingRecord = sequelize.define('BillingRecord', {
 BillingRecord.associate = (models) => {
   BillingRecord.belongsTo(models.User, { foreignKey: 'userId', as: 'User' });
   BillingRecord.belongsTo(models.OTPRequest, { foreignKey: 'otpRequestId', as: 'OTPRequest' });
+  BillingRecord.belongsTo(models.Campaign, { foreignKey: 'campaignId', as: 'campaign' });
+  BillingRecord.belongsTo(models.Customer, { foreignKey: 'customerId', as: 'customer' });
 };
 
 module.exports = BillingRecord;

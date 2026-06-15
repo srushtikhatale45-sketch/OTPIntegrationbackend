@@ -1,18 +1,19 @@
-const { Op } = require('sequelize');
+const { Op,Sequelize } = require('sequelize');
 const db = require('../models');
 const Admin = require('../models/Admin');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../config/jwt');
+const Payment = require('../models/Payment');          // direct require
+const Customer = require('../models/Customer');        // direct require
 
-// Helper to get models
-let User, OTPRequest, ActivityLog, BillingRecord, Payment, Campaign, Message;
+// Helper to get models (fallback)
+let User, OTPRequest, ActivityLog, BillingRecord, Campaign, Message;
 
 try {
   User = db.User || require('../models/User');
   OTPRequest = db.OTPRequest || require('../models/OTPRequest');
   ActivityLog = db.ActivityLog || require('../models/ActivityLog');
   BillingRecord = db.BillingRecord || require('../models/BillingRecord');
-  Payment = db.Payment || require('../models/Payment');
   Campaign = db.Campaign || require('../models/Campaign');
   Message = db.Message || require('../models/Message');
 } catch (error) {
@@ -36,15 +37,13 @@ const adminLogin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// Get Dashboard Stats
 const getDashboardStats = async (req, res) => {
   try {
-    const totalUsers = await (User?.count() || Promise.resolve(0));
-    const activeUsers = await (User?.count({ where: { isActive: true } }) || Promise.resolve(0));
-    const totalOTPRequests = await (OTPRequest?.count() || Promise.resolve(0));
-    const successfulVerifications = await (OTPRequest?.count({ where: { status: 'verified' } }) || Promise.resolve(0));
-    const failedAttempts = await (OTPRequest?.count({ where: { status: 'failed' } }) || Promise.resolve(0));
+    const totalUsers = await User.count({ where: { type: 'client_admin' } });
+    const activeUsers = await User.count({ where: { type: 'client_admin', isActive: true } });
+    const totalOTPRequests = await OTPRequest.count() || 0;
+    const successfulVerifications = await OTPRequest.count({ where: { status: 'verified' } }) || 0;
+    const failedAttempts = await OTPRequest.count({ where: { status: 'failed' } }) || 0;
     
     let revenue = 0;
     let channelStats = [];
@@ -55,18 +54,19 @@ const getDashboardStats = async (req, res) => {
     
     if (OTPRequest) {
       channelStats = await OTPRequest.findAll({
-        attributes: ['channel', [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']],
+        attributes: ['channel', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
         group: ['channel']
       }) || [];
     }
 
-    const adminBalance = await (Payment?.sum('amount', { where: { type: 'credit' } }) || Promise.resolve(0));
+    // ✅ Admin balance = total balance of all client admins
+    const adminBalance = await User.sum('balance', { where: { type: 'client_admin' } }) || 0;
     
-    const recentActivities = await (ActivityLog?.findAll({
-      include: User ? [{ model: User, as: 'User', attributes: ['name', 'email'], required: false }] : [],
+    const recentActivities = await ActivityLog.findAll({
+      include: [{ model: User, as: 'User', attributes: ['name', 'email'], required: false }],
       order: [['createdAt', 'DESC']],
       limit: 10
-    }) || Promise.resolve([]));
+    }) || [];
 
     res.json({
       success: true,
@@ -78,52 +78,12 @@ const getDashboardStats = async (req, res) => {
         failedAttempts, 
         revenue: revenue || 0 
       },
-      channelStats: channelStats || [],
-      adminBalance: adminBalance || 0,
+      channelStats,
+      adminBalance,
       recentActivities
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Get all users
-const getUsers = async (req, res) => {
-  try {
-    const { page = 1, limit = 20, search = '' } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    
-    let where = { type: 'client_admin'};
-    if (search) {
-      where = {
-        [Op.or]: [
-          { name: { [Op.iLike]: `%${search}%` } },
-          { email: { [Op.iLike]: `%${search}%` } }
-        ]
-      };
-    }
-    
-    const { count, rows } = await User.findAndCountAll({
-      where,
-      attributes: ['id', 'name', 'email', 'phone', 'company', 'balance', 'services', 'isActive', 'createdAt'],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset
-    });
-
-    res.json({
-      success: true,
-      users: rows,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Get users error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -164,12 +124,9 @@ const getUserOTPStats = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 const createUser = async (req, res) => {
   try {
     const { name, email, phone, company, password, services, initialBalance } = req.body;
-    
-    console.log('Create user request:', { name, email, phone, company, hasPassword: !!password, services, initialBalance });
     
     // Validate required fields
     if (!name || !email || !password) {
@@ -193,17 +150,37 @@ const createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
     
-    // Create user with password
+    // Create user with password and type 'client_admin'
     const user = await User.create({
       name,
       email,
       phone: phone || null,
       company: company || null,
-      password: password, // This will be hashed by the model hook
+      password: password,
+      type: 'client_admin',
       services: services || { sms: true, whatsapp: false, email: true },
       balance: initialBalance || 0,
       isActive: true
     });
+    
+    // If initial balance > 0, create corresponding financial records
+    if (initialBalance > 0) {
+      // Create BillingRecord for revenue summary (credit to user)
+      await BillingRecord.create({
+        userId: user.id,
+        type: 'credit',
+        amount: initialBalance,
+        description: `Initial balance added during account creation`
+      });
+      
+      // Create Payment record for admin balance tracking
+      await Payment.create({
+        userId: user.id,
+        amount: initialBalance,
+        type: 'credit',
+        description: `Initial balance added during account creation`
+      });
+    }
     
     // Remove password from response
     const userResponse = user.toJSON();
@@ -213,10 +190,8 @@ const createUser = async (req, res) => {
     await ActivityLog.create({
       userId: user.id,
       action: 'user_created',
-      details: { createdBy: req.admin?.id || 'system' }
+      details: { createdBy: req.admin?.id || 'system', initialBalance }
     });
-    
-    console.log('User created successfully:', user.id);
     
     res.json({ success: true, user: userResponse });
   } catch (error) {
@@ -274,7 +249,7 @@ const deleteUser = async (req, res) => {
   }
 };
 
-// Add balance
+// Add balance (legacy, kept for compatibility)
 const addBalance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -304,6 +279,7 @@ const addBalance = async (req, res) => {
   }
 };
 
+// Get OTP requests
 const getOTPRequests = async (req, res) => {
   try {
     const { page = 1, limit = 50, channel, status, verified } = req.query;
@@ -363,6 +339,43 @@ const getActivityLogs = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// Get all users (only client_admin)
+const getUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    let where = { type: 'client_admin' };
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+    
+    const { count, rows } = await User.findAndCountAll({
+      where,
+      attributes: ['id', 'name', 'email', 'phone', 'company', 'balance', 'services', 'isActive', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset
+    });
+
+    res.json({
+      success: true,
+      users: rows,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // Get billing summary
 const getBillingSummary = async (req, res) => {
@@ -397,7 +410,7 @@ const getBillingSummary = async (req, res) => {
   }
 };
 
-// Get services
+// Get services (pricing)
 const getServices = async (req, res) => {
   try {
     const services = [
@@ -411,7 +424,7 @@ const getServices = async (req, res) => {
   }
 };
 
-// Add payment to user
+// Add payment to user (credits)
 const addUserPayment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -423,14 +436,21 @@ const addUserPayment = async (req, res) => {
     const newBalance = parseFloat(user.balance) + parseFloat(amount);
     await user.update({ balance: newBalance });
     
-    if (Payment) {
-      await Payment.create({
-        userId: id,
-        amount,
-        type: 'credit',
-        description: description || `Admin added ₹${amount} credits`
-      });
-    }
+    // Create BillingRecord for revenue summary (credit to user)
+    await BillingRecord.create({
+      userId: id,
+      type: 'credit',
+      amount: amount,
+      description: description || `Admin added ₹${amount} credits`
+    });
+    
+    // Create Payment record for admin balance tracking
+    await Payment.create({
+      userId: id,
+      amount: parseFloat(amount),
+      type: 'credit',
+      description: description || `Admin added ₹${amount} credits`
+    });
     
     await ActivityLog?.create({
       userId: id,
@@ -444,7 +464,6 @@ const addUserPayment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // Get user dashboard data for admin viewing
 const getUserDashboardData = async (req, res) => {
@@ -502,6 +521,8 @@ const updateUserServices = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Get customers (visitors) with their client admin
 const getCustomers = async (req, res) => {
   try {
     const customers = await Customer.findAll({
@@ -510,6 +531,7 @@ const getCustomers = async (req, res) => {
     });
     res.json({ success: true, customers });
   } catch (error) {
+    console.error('Get customers error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
