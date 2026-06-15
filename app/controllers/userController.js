@@ -8,10 +8,12 @@ const Message = db.Message;
 const Payment = db.Payment;
 const User = db.User;
 const OTPRequest = db.OTPRequest;
+
+// Updated prices to Indian Rupees (INR)
 const PRICES = {
-  sms: 0.03,
-  whatsapp: 0.02,
-  email: 0.005
+  sms: 1.00,      // ₹1.00 per SMS OTP
+  whatsapp: 0.50,  // ₹0.50 per WhatsApp OTP
+  email: 0.25      // ₹0.25 per Email OTP
 };
 
 // Get user profile
@@ -52,7 +54,7 @@ const createCampaign = async (req, res) => {
     if (parseFloat(user.balance) < totalCost) {
       return res.status(402).json({ 
         success: false, 
-        message: `Insufficient balance. Need $${totalCost.toFixed(4)}, have $${parseFloat(user.balance).toFixed(2)}` 
+        message: `Insufficient balance. Need ₹${totalCost.toFixed(4)}, have ₹${parseFloat(user.balance).toFixed(2)}` 
       });
     }
     
@@ -147,6 +149,7 @@ const getUserReport = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 const getEndUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;

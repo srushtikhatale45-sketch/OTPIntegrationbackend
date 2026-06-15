@@ -11,10 +11,11 @@ const { sendOTPviaSMS } = require('../services/otp/smsService');
 const { sendWhatsAppOTPWithFallback } = require('../services/otp/whatsappService');
 const { sendOTPviaEmail } = require('../services/otp/emailService');
 
+// Updated prices to Indian Rupees (INR)
 const PRICES = {
-  sms: 0.03,
-  whatsapp: 0.02,
-  email: 0.005
+  sms: 1.00,      // ₹1.00 per SMS OTP
+  whatsapp: 0.50,  // ₹0.50 per WhatsApp OTP
+  email: 0.25      // ₹0.25 per Email OTP
 };
 
 const generateOTPCode = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -154,7 +155,7 @@ const verifyOTP = async (req, res) => {
     res.json({
       success: true,
       verified: true,
-      userType: user.type,          // ← critical
+      userType: user.type,
       user: {
         id: user.id,
         name: user.name,

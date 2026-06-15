@@ -3,9 +3,9 @@ const User = require('../models/User');
 const OTPRequest = require('../models/OTPRequest');
 
 const PRICES = {
-  sms: 0.03,
-  whatsapp: 0.02,
-  email: 0.005
+  sms: 1.00,      // ₹1.00
+  whatsapp: 0.50,  // ₹0.50
+  email: 0.25      // ₹0.25
 };
 
 const sendOTP = async (req, res) => {
@@ -46,7 +46,7 @@ const sendOTP = async (req, res) => {
     }
 
     // Check balance
-    const price = PRICES[channel] || 0.03;
+    const price = PRICES[channel] || 1.00;
     const currentBalance = parseFloat(user.balance) || 0;
     if (currentBalance < price) {
       return res.status(402).json({
@@ -100,7 +100,6 @@ const sendOTP = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // Verify OTP
 const verifyOTP = async (req, res) => {

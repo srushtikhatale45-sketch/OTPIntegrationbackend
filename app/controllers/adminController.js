@@ -127,6 +127,7 @@ const getUsers = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // Get OTP statistics per user (total attempts, verified, failed, pending)
 const getUserOTPStats = async (req, res) => {
   try {
@@ -163,6 +164,7 @@ const getUserOTPStats = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 const createUser = async (req, res) => {
   try {
     const { name, email, phone, company, password, services, initialBalance } = req.body;
@@ -222,6 +224,7 @@ const createUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // Update user
 const updateUser = async (req, res) => {
   try {
@@ -290,7 +293,7 @@ const addBalance = async (req, res) => {
         userId: id,
         type: 'credit',
         amount,
-        description: description || `Admin added $${amount} credits`
+        description: description || `Admin added ₹${amount} credits`
       });
     }
     
@@ -300,6 +303,7 @@ const addBalance = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 const getOTPRequests = async (req, res) => {
   try {
     const { page = 1, limit = 50, channel, status, verified } = req.query;
@@ -397,9 +401,9 @@ const getBillingSummary = async (req, res) => {
 const getServices = async (req, res) => {
   try {
     const services = [
-      { id: 'sms', name: 'SMS', price: 0.03, icon: '📱', description: 'Text message OTP' },
-      { id: 'whatsapp', name: 'WhatsApp', price: 0.02, icon: '💬', description: 'WhatsApp message OTP' },
-      { id: 'email', name: 'Email', price: 0.005, icon: '✉️', description: 'Email OTP' }
+      { id: 'sms', name: 'SMS', price: 1.00, icon: '📱', description: 'Text message OTP' },
+      { id: 'whatsapp', name: 'WhatsApp', price: 0.50, icon: '💬', description: 'WhatsApp message OTP' },
+      { id: 'email', name: 'Email', price: 0.25, icon: '✉️', description: 'Email OTP' }
     ];
     res.json({ success: true, services });
   } catch (error) {
@@ -424,7 +428,7 @@ const addUserPayment = async (req, res) => {
         userId: id,
         amount,
         type: 'credit',
-        description: description || `Admin added $${amount} credits`
+        description: description || `Admin added ₹${amount} credits`
       });
     }
     
@@ -440,6 +444,7 @@ const addUserPayment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // Get user dashboard data for admin viewing
 const getUserDashboardData = async (req, res) => {
   try {
@@ -480,6 +485,7 @@ const getUserDashboardData = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // Update user services
 const updateUserServices = async (req, res) => {
   try {
